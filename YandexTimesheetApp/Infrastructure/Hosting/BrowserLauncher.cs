@@ -42,18 +42,6 @@ public sealed class BrowserLauncher(
 				settings,
 				applicationUrl);
 
-			if (settings.Browser != BrowserPreference.SystemDefault
-				&& launchCommand is null)
-			{
-				logger.LogWarning(
-					"Выбранный браузер не найден. " +
-					"Ссылка будет открыта в системном браузере.");
-
-				OpenWithSystemBrowser(applicationUrl);
-
-				return;
-			}
-
 			if (launchCommand is null)
 			{
 				OpenWithSystemBrowser(applicationUrl);
@@ -61,7 +49,19 @@ public sealed class BrowserLauncher(
 				return;
 			}
 
-			OpenWithSelectedBrowser(launchCommand);
+			var wasOpened = await TryOpenWithSelectedBrowserAsync(
+				launchCommand);
+
+			if (wasOpened)
+			{
+				return;
+			}
+
+			logger.LogWarning(
+				"Выбранный браузер не найден или не удалось его запустить. " +
+				"Ссылка будет открыта в системном браузере.");
+
+			OpenWithSystemBrowser(applicationUrl);
 		}
 		catch (Exception exception)
 		{
@@ -73,11 +73,8 @@ public sealed class BrowserLauncher(
 
 	private string? GetApplicationUrl()
 	{
-		var server =
-			serviceProvider.GetRequiredService<IServer>();
-
-		var addressesFeature =
-			server.Features.Get<IServerAddressesFeature>();
+		var server = serviceProvider.GetRequiredService<IServer>();
+		var addressesFeature = server.Features.Get<IServerAddressesFeature>();
 
 		return addressesFeature?
 			.Addresses
@@ -99,13 +96,14 @@ public sealed class BrowserLauncher(
 		}
 	}
 
-	private static void OpenWithSelectedBrowser(
+	private static async Task<bool> TryOpenWithSelectedBrowserAsync(
 		BrowserLaunchCommand launchCommand)
 	{
 		var startInfo = new ProcessStartInfo
 		{
 			FileName = launchCommand.FileName,
-			UseShellExecute = launchCommand.UseShellExecute
+			UseShellExecute = launchCommand.UseShellExecute,
+			CreateNoWindow = true
 		};
 
 		foreach (var argument in launchCommand.Arguments)
@@ -113,11 +111,25 @@ public sealed class BrowserLauncher(
 			startInfo.ArgumentList.Add(argument);
 		}
 
-		if (Process.Start(startInfo) is null)
+		using var process = Process.Start(startInfo);
+
+		if (process is null)
 		{
-			throw new InvalidOperationException(
-				"Не удалось открыть выбранный браузер.");
+			return false;
 		}
+
+		if (!OperatingSystem.IsMacOS()
+			|| !string.Equals(
+				launchCommand.FileName,
+				"/usr/bin/open",
+				StringComparison.Ordinal))
+		{
+			return true;
+		}
+
+		await process.WaitForExitAsync();
+
+		return process.ExitCode == 0;
 	}
 
 	private static bool IsHttpAddress(string address)

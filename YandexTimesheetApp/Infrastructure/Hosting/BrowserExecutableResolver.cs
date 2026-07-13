@@ -4,6 +4,11 @@ namespace Mugnum.YandexTimesheetApp.Infrastructure.Hosting;
 
 public sealed class BrowserExecutableResolver
 {
+	private const string MacOsOpenExecutable = "/usr/bin/open";
+	private const string GoogleChromeBundleIdentifier = "com.google.Chrome";
+	private const string MozillaFirefoxBundleIdentifier = "org.mozilla.firefox";
+	private const string SafariBundleIdentifier = "com.apple.Safari";
+
 	public BrowserLaunchCommand? Resolve(
 		ApplicationSettings settings,
 		string applicationUrl)
@@ -14,20 +19,10 @@ public sealed class BrowserExecutableResolver
 		return settings.Browser switch
 		{
 			BrowserPreference.SystemDefault => null,
-
-			BrowserPreference.GoogleChrome => ResolveGoogleChrome(
-				applicationUrl),
-
-			BrowserPreference.MozillaFirefox => ResolveMozillaFirefox(
-				applicationUrl),
-
-			BrowserPreference.Safari => ResolveSafari(
-				applicationUrl),
-
-			BrowserPreference.Custom => ResolveCustom(
-				settings.CustomBrowserPath,
-				applicationUrl),
-
+			BrowserPreference.GoogleChrome => ResolveGoogleChrome(applicationUrl),
+			BrowserPreference.MozillaFirefox => ResolveMozillaFirefox(applicationUrl),
+			BrowserPreference.Safari => ResolveSafari(applicationUrl),
+			BrowserPreference.Custom => ResolveCustom(settings.CustomBrowserPath, applicationUrl),
 			_ => throw new ArgumentOutOfRangeException(
 				nameof(settings.Browser),
 				settings.Browser,
@@ -35,8 +30,7 @@ public sealed class BrowserExecutableResolver
 		};
 	}
 
-	private static BrowserLaunchCommand? ResolveGoogleChrome(
-		string applicationUrl)
+	private static BrowserLaunchCommand? ResolveGoogleChrome(string applicationUrl)
 	{
 		if (OperatingSystem.IsWindows())
 		{
@@ -44,24 +38,20 @@ public sealed class BrowserExecutableResolver
 
 			return executablePath is null
 				? null
-				: new BrowserLaunchCommand(
-					executablePath,
-					[applicationUrl],
-					false);
+				: CreateExecutableCommand(executablePath, applicationUrl);
 		}
 
 		if (OperatingSystem.IsMacOS())
 		{
-			return CreateMacOsApplicationCommand(
-				"Google Chrome",
+			return CreateMacOsBundleCommand(
+				GoogleChromeBundleIdentifier,
 				applicationUrl);
 		}
 
 		return null;
 	}
 
-	private static BrowserLaunchCommand? ResolveMozillaFirefox(
-		string applicationUrl)
+	private static BrowserLaunchCommand? ResolveMozillaFirefox(string applicationUrl)
 	{
 		if (OperatingSystem.IsWindows())
 		{
@@ -69,24 +59,20 @@ public sealed class BrowserExecutableResolver
 
 			return executablePath is null
 				? null
-				: new BrowserLaunchCommand(
-					executablePath,
-					[applicationUrl],
-					false);
+				: CreateExecutableCommand(executablePath, applicationUrl);
 		}
 
 		if (OperatingSystem.IsMacOS())
 		{
-			return CreateMacOsApplicationCommand(
-				"Firefox",
+			return CreateMacOsBundleCommand(
+				MozillaFirefoxBundleIdentifier,
 				applicationUrl);
 		}
 
 		return null;
 	}
 
-	private static BrowserLaunchCommand ResolveSafari(
-		string applicationUrl)
+	private static BrowserLaunchCommand ResolveSafari(string applicationUrl)
 	{
 		if (!OperatingSystem.IsMacOS())
 		{
@@ -94,8 +80,8 @@ public sealed class BrowserExecutableResolver
 				"Safari доступен только на macOS.");
 		}
 
-		return CreateMacOsApplicationCommand(
-			"Safari",
+		return CreateMacOsBundleCommand(
+			SafariBundleIdentifier,
 			applicationUrl);
 	}
 
@@ -105,21 +91,30 @@ public sealed class BrowserExecutableResolver
 	{
 		var executablePath = ResolveCustomPath(path);
 
+		return CreateExecutableCommand(
+			executablePath,
+			applicationUrl);
+	}
+
+	private static BrowserLaunchCommand CreateExecutableCommand(
+		string executablePath,
+		string applicationUrl)
+	{
 		return new BrowserLaunchCommand(
 			executablePath,
 			[applicationUrl],
 			false);
 	}
 
-	private static BrowserLaunchCommand CreateMacOsApplicationCommand(
-		string applicationName,
+	private static BrowserLaunchCommand CreateMacOsBundleCommand(
+		string bundleIdentifier,
 		string applicationUrl)
 	{
 		return new BrowserLaunchCommand(
-			"/usr/bin/open",
+			MacOsOpenExecutable,
 			[
-				"-a",
-				applicationName,
+				"-b",
+				bundleIdentifier,
 				applicationUrl
 			],
 			false);
@@ -130,24 +125,21 @@ public sealed class BrowserExecutableResolver
 		var candidates = new[]
 		{
 			Path.Combine(
-				Environment.GetFolderPath(
-					Environment.SpecialFolder.ProgramFiles),
+				Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
 				"Google",
 				"Chrome",
 				"Application",
 				"chrome.exe"),
 
 			Path.Combine(
-				Environment.GetFolderPath(
-					Environment.SpecialFolder.ProgramFilesX86),
+				Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
 				"Google",
 				"Chrome",
 				"Application",
 				"chrome.exe"),
 
 			Path.Combine(
-				Environment.GetFolderPath(
-					Environment.SpecialFolder.LocalApplicationData),
+				Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
 				"Google",
 				"Chrome",
 				"Application",
@@ -162,14 +154,12 @@ public sealed class BrowserExecutableResolver
 		var candidates = new[]
 		{
 			Path.Combine(
-				Environment.GetFolderPath(
-					Environment.SpecialFolder.ProgramFiles),
+				Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
 				"Mozilla Firefox",
 				"firefox.exe"),
 
 			Path.Combine(
-				Environment.GetFolderPath(
-					Environment.SpecialFolder.ProgramFilesX86),
+				Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
 				"Mozilla Firefox",
 				"firefox.exe")
 		};
@@ -195,13 +185,11 @@ public sealed class BrowserExecutableResolver
 		return path;
 	}
 
-	private static string? FindFirstExistingFile(
-		IEnumerable<string> candidates)
+	private static string? FindFirstExistingFile(IEnumerable<string> candidates)
 	{
 		foreach (var candidate in candidates)
 		{
-			if (!string.IsNullOrWhiteSpace(candidate)
-				&& File.Exists(candidate))
+			if (!string.IsNullOrWhiteSpace(candidate) && File.Exists(candidate))
 			{
 				return candidate;
 			}
