@@ -1,0 +1,139 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.rsuser
+
+# Rider / JetBrains
+.idea/
+*.sln.iml
+
+# VS Code
+.vscode/
+
+# Build results
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+
+# Publish output
+publish/
+artifacts/
+Artifacts/
+*.pubxml.user
+
+# Visual Studio publish profiles may contain machine-specific paths.
+# Commit only deliberately reviewed shared profiles.
+Properties/PublishProfiles/*.pubxml.user
+
+# Test results
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+coverage/
+coverage-results/
+.coverage/
+
+# BenchmarkDotNet
+BenchmarkDotNet.Artifacts/
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+project.lock.json
+project.fragment.lock.json
+artifacts.json
+
+# Dotnet tools restored locally
+.dotnet/
+
+# ASP.NET Core generated files
+wwwroot/**/*.br
+wwwroot/**/*.gz
+
+# Static web assets generated during build
+*.staticwebassets.runtime.json
+*.staticwebassets.endpoints.json
+*.staticwebassets.build.json
+*.staticwebassets.build.endpoints.json
+*.staticwebassets.references.upToDateCheck.txt
+*.staticwebassets.removed.txt
+
+# User secrets and local settings
+secrets.json
+appsettings.Local.json
+appsettings.*.Local.json
+
+# Local application settings accidentally copied into the repository
+settings.json
+
+# Logs
+logs/
+Logs/
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.old
+*.orig
+*.swp
+*.swo
+*~
+~$*
+
+# OS files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Windows crash dumps
+*.dmp
+
+# macOS packaging/signing output
+*.dmg
+*.pkg
+*.app/
+*.xcarchive/
+*.p12
+*.cer
+*.provisionprofile
+
+# Windows packaging output
+*.msi
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+
+# Archives and release packages
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
+# Local publish scripts or generated release directories
+release/
+releases/
+dist/
+
+# LibMan cache and generated compressed copies
+.librarymanager/

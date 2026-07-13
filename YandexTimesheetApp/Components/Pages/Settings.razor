@@ -1,0 +1,579 @@
+﻿@page "/settings"
+@rendermode InteractiveServer
+
+@inject ApplicationSettingsService _settingsService
+@inject ISecretStore _secretStore
+@inject NavigationManager _navigationManager
+
+<PageTitle>Настройки</PageTitle>
+
+<div class="settings-page">
+	<header class="page-heading">
+		<div>
+			<h1>Настройки</h1>
+		</div>
+	</header>
+
+	@if (_isLoading)
+	{
+		<section class="message-panel">
+			Загрузка настроек...
+		</section>
+	}
+	else
+	{
+		<EditForm Model="_model"
+				  OnValidSubmit="SaveAsync"
+				  FormName="settings-form"
+				  class="settings-form">
+
+			<DataAnnotationsValidator />
+
+			@if (_validationErrors.Count > 0)
+			{
+				<section class="message-panel error-panel"
+						 role="alert">
+
+					<strong>
+						Проверьте заполнение формы.
+					</strong>
+
+					<ul class="validation-summary">
+						@foreach (var error in _validationErrors)
+						{
+							<li>@error</li>
+						}
+					</ul>
+				</section>
+			}
+
+			<fieldset disabled="@_isSaving">
+				<legend>Яндекс Трекер</legend>
+
+				<div class="form-field">
+					<label for="organization-id">
+						ID организации Яндекс 360
+					</label>
+
+					<InputText id="organization-id"
+							   class="form-control"
+							   autocomplete="off"
+							   autocapitalize="off"
+							   spellcheck="false"
+							   @bind-Value="_model.OrganizationId" />
+
+					<ValidationMessage For="@(() => _model.OrganizationId)" />
+
+					<small>
+						Передаётся в заголовке X-Org-ID
+						при обращении к Tracker API.
+					</small>
+				</div>
+			</fieldset>
+
+			<fieldset disabled="@_isSaving">
+				<legend>Авторизация Яндекс OAuth</legend>
+
+				<div class="oauth-status-panel">
+					<div class="oauth-status">
+						<span>Состояние access token</span>
+
+						@if (_hasSavedOAuthToken)
+						{
+							<strong class="status-success">
+								Токен сохранён
+							</strong>
+						}
+						else
+						{
+							<strong class="status-warning">
+								Токен отсутствует
+							</strong>
+						}
+					</div>
+
+					<div class="oauth-actions">
+						<a class="button button-primary"
+						   href="/oauth/login"
+						   data-enhance-nav="false">
+							Авторизоваться в Яндексе
+						</a>
+
+						@if (_hasSavedOAuthToken)
+						{
+							<button type="button"
+									class="button button-danger"
+									disabled="@_isSaving"
+									@onclick="RemoveOAuthTokensAsync">
+								Удалить сохранённые токены
+							</button>
+						}
+					</div>
+				</div>
+
+				<div class="manual-token-section">
+					<div class="manual-token-heading">
+						<div>
+							<strong>
+								Ручной OAuth-токен
+							</strong>
+
+							<p>
+								Резервный способ для отладки.
+								В обычном случае используйте
+								авторизацию через Яндекс.
+							</p>
+						</div>
+
+						<button type="button"
+								class="link-button"
+								@onclick="ToggleManualToken">
+							@(_showManualToken
+								? "Скрыть"
+								: "Показать")
+						</button>
+					</div>
+
+					@if (_showManualToken)
+					{
+						<div class="form-field">
+							<label for="oauth-token">
+								Новый access token
+							</label>
+
+							<InputText id="oauth-token"
+									   class="form-control oauth-token-input"
+									   type="password"
+									   autocomplete="new-password"
+									   autocapitalize="off"
+									   autocorrect="off"
+									   spellcheck="false"
+									   data-form-type="other"
+									   data-lpignore="true"
+									   data-1p-ignore="true"
+									   placeholder="@_manualTokenPlaceholder"
+									   @bind-Value="_model.OAuthToken" />
+
+							<small>
+								Оставьте поле пустым, чтобы
+								не изменять сохранённый токен.
+							</small>
+						</div>
+					}
+				</div>
+			</fieldset>
+
+			<fieldset disabled="@_isSaving">
+				<legend>Проверка списаний</legend>
+
+				<div class="form-field">
+					<label for="workday-duration">
+						Длительность рабочего дня, часов
+					</label>
+
+					<InputNumber id="workday-duration"
+								 class="form-control"
+								 step="0.5"
+								 @bind-Value="_model.WorkdayDurationHours" />
+
+					<ValidationMessage For="@(() => _model.WorkdayDurationHours)" />
+
+					<small>
+						День считается нарушением, если сумма
+						проверяемых списаний превышает это значение.
+					</small>
+				</div>
+
+				<div class="form-field">
+					<label for="validation-exclusions">
+						Исключения из проверки
+					</label>
+
+					<InputTextArea id="validation-exclusions"
+								   class="form-control exclusions-input"
+								   @bind-Value="_model.ValidationExclusionsText" />
+
+					<small>
+						Укажите по одному фрагменту на строку.
+						Регистр не учитывается. Если фрагмент
+						найден в ключе задачи, названии
+						или комментарии, списание исключается
+						из проверки длительности дня.
+					</small>
+				</div>
+			</fieldset>
+
+			<fieldset disabled="@_isSaving">
+				<legend>Запуск браузера</legend>
+
+				<div class="form-field checkbox-field">
+					<label>
+						<InputCheckbox @bind-Value="_model.OpenBrowserOnStart" />
+
+						Открывать браузер при запуске приложения
+					</label>
+				</div>
+
+				<div class="form-field">
+					<label for="browser-preference">
+						Предпочитаемый браузер
+					</label>
+
+					<InputSelect id="browser-preference"
+									class="form-control"
+									@bind-Value="_model.Browser">
+						<option value="@BrowserPreference.SystemDefault">
+							Системный браузер
+						</option>
+
+						<option value="@BrowserPreference.GoogleChrome">
+							Google Chrome
+						</option>
+
+						<option value="@BrowserPreference.MozillaFirefox">
+							Mozilla Firefox
+						</option>
+
+						@if (OperatingSystem.IsMacOS())
+						{
+							<option value="@BrowserPreference.Safari">
+								Safari
+							</option>
+						}
+
+						<option value="@BrowserPreference.Custom">
+							Другой браузер
+						</option>
+					</InputSelect>
+				</div>
+
+				@if (_model.Browser == BrowserPreference.Custom)
+				{
+					<div class="form-field">
+						<label for="custom-browser-path">
+							Путь к исполняемому файлу браузера
+						</label>
+
+						<InputText id="custom-browser-path"
+								   class="form-control"
+								   autocomplete="off"
+								   spellcheck="false"
+								   placeholder="C:\Program Files\Browser\browser.exe"
+								   @bind-Value="_model.CustomBrowserPath" />
+
+						<ValidationMessage For="@(() => _model.CustomBrowserPath)" />
+					</div>
+				}
+			</fieldset>
+
+			<div class="form-actions">
+				<button type="submit"
+						class="button button-primary"
+						disabled="@_isSaving">
+					@(_isSaving
+						? "Сохранение..."
+						: "Сохранить настройки")
+				</button>
+
+				<button type="button"
+						class="button button-secondary"
+						disabled="@_isSaving"
+						@onclick="GoToHome">
+					Вернуться к списаниям
+				</button>
+			</div>
+		</EditForm>
+	}
+
+	@if (!string.IsNullOrWhiteSpace(_successMessage))
+	{
+		<section class="message-panel success-panel"
+				 role="status">
+			@_successMessage
+		</section>
+	}
+
+	@if (!string.IsNullOrWhiteSpace(_errorMessage))
+	{
+		<section class="message-panel error-panel"
+				 role="alert">
+
+			<strong>Ошибка</strong>
+
+			<p>@_errorMessage</p>
+		</section>
+	}
+</div>
+
+@code {
+	private readonly SettingsFormModel _model = new();
+
+	private readonly List<string> _validationErrors = [];
+
+	private bool _isLoading = true;
+
+	private bool _isSaving;
+
+	private bool _hasSavedOAuthToken;
+
+	private bool _showManualToken;
+
+	private string? _successMessage;
+
+	private string? _errorMessage;
+
+	private string _manualTokenPlaceholder => _hasSavedOAuthToken
+		? "Введите токен только для его замены"
+		: "Введите OAuth access token";
+
+	protected override async Task OnInitializedAsync()
+	{
+		ReadOAuthQueryParameters();
+
+		try
+		{
+			var settings = await _settingsService.GetAsync();
+			_model.OrganizationId = settings.OrganizationId;
+			_model.OpenBrowserOnStart = settings.OpenBrowserOnStart;
+			_model.Browser = settings.Browser;
+			_model.CustomBrowserPath = settings.CustomBrowserPath;
+			_model.WorkdayDurationHours = settings.WorkdayDurationHours;
+			_model.ValidationExclusionsText = string.Join(Environment.NewLine, settings.ValidationExclusions);
+			var oauthToken = await _secretStore.GetAsync(TrackerSecretNames.OAuthAccessToken);
+			_hasSavedOAuthToken = !string.IsNullOrWhiteSpace(oauthToken);
+		}
+		catch (Exception exception)
+		{
+			_errorMessage = $"Не удалось загрузить настройки. {exception.Message}";
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
+
+	private async Task SaveAsync()
+	{
+		_isSaving = true;
+		_successMessage = null;
+		_errorMessage = null;
+		_validationErrors.Clear();
+
+		try
+		{
+			ValidateForm();
+
+			if (_validationErrors.Count > 0)
+			{
+				return;
+			}
+
+			var currentSettings = await _settingsService.GetAsync();
+
+			var settings = new ApplicationSettings
+			{
+				OrganizationId = _model.OrganizationId.Trim(),
+				OAuthDeviceId = currentSettings.OAuthDeviceId,
+				OpenBrowserOnStart = _model.OpenBrowserOnStart,
+				Browser = _model.Browser,
+				CustomBrowserPath = string.IsNullOrWhiteSpace(_model.CustomBrowserPath)
+					? null
+					: _model.CustomBrowserPath.Trim(),
+				WorkdayDurationHours = _model.WorkdayDurationHours,
+				ValidationExclusions = ParseValidationExclusions(_model.ValidationExclusionsText)
+			};
+
+			await _settingsService.SaveAsync(settings);
+
+			if (!string.IsNullOrWhiteSpace(_model.OAuthToken))
+			{
+				await _secretStore.SetAsync(
+					TrackerSecretNames.OAuthAccessToken, _model.OAuthToken.Trim());
+
+				_model.OAuthToken = string.Empty;
+				_hasSavedOAuthToken = true;
+			}
+
+			_successMessage = "Настройки сохранены.";
+
+			if (!_hasSavedOAuthToken)
+			{
+				_successMessage += " Для загрузки данных авторизуйтесь в Яндексе.";
+			}
+		}
+		catch (Exception exception)
+		{
+			_errorMessage = exception.Message;
+		}
+		finally
+		{
+			_isSaving = false;
+		}
+	}
+
+	private async Task RemoveOAuthTokensAsync()
+	{
+		_isSaving = true;
+		_successMessage = null;
+		_errorMessage = null;
+
+		try
+		{
+			await _secretStore.RemoveAsync(TrackerSecretNames.OAuthAccessToken);
+			await _secretStore.RemoveAsync(TrackerSecretNames.OAuthRefreshToken);
+			_model.OAuthToken = string.Empty;
+			_hasSavedOAuthToken = false;
+			_successMessage = "Сохранённые OAuth-токены удалены.";
+		}
+		catch (Exception exception)
+		{
+			_errorMessage = $"Не удалось удалить OAuth-токены. {exception.Message}";
+		}
+		finally
+		{
+			_isSaving = false;
+		}
+	}
+
+	private void ValidateForm()
+	{
+		if (string.IsNullOrWhiteSpace(_model.OrganizationId))
+		{
+			_validationErrors.Add("Укажите ID организации Яндекс 360.");
+		}
+
+		if (string.IsNullOrWhiteSpace(ApplicationSettings.YandexOAuthClientId))
+		{
+			_validationErrors.Add("В приложении не задан Client ID Яндекс OAuth.");
+		}
+
+		if (!Uri.TryCreate(ApplicationSettings.YandexOAuthRedirectUri,
+			UriKind.Absolute, out var redirectUri))
+		{
+			_validationErrors.Add("В приложении задан некорректный Redirect URI.");
+		}
+		else
+		{
+			if (!string.Equals(redirectUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+				&& !string.Equals(redirectUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+			{
+				_validationErrors.Add("Встроенный Redirect URI должен использовать HTTP или HTTPS.");
+			}
+		}
+
+		if (_model.WorkdayDurationHours is <= 0 or > 24)
+		{
+			_validationErrors.Add("Длительность рабочего дня должна находиться "
+				+ "в диапазоне от 0 до 24 часов.");
+		}
+
+		if (_model.Browser != BrowserPreference.Custom)
+		{
+			return;
+		}
+		if (string.IsNullOrWhiteSpace(
+				_model.CustomBrowserPath))
+		{
+			_validationErrors.Add(
+				"Укажите путь к пользовательскому браузеру.");
+		}
+		else
+		{
+			var browserPath = _model.CustomBrowserPath.Trim();
+
+			if (!Path.IsPathFullyQualified(browserPath))
+			{
+				_validationErrors.Add("Путь к браузеру должен быть абсолютным.");
+			}
+			else if (!File.Exists(browserPath))
+			{
+				_validationErrors.Add("Исполняемый файл браузера не найден.");
+			}
+		}
+
+		if (_model.Browser == BrowserPreference.Safari
+			&& !OperatingSystem.IsMacOS())
+		{
+			_validationErrors.Add("Safari можно использовать только на macOS.");
+		}
+	}
+
+	private static List<string> ParseValidationExclusions(string? value)
+	{
+		return (value ?? string.Empty)
+			.Split(
+				[
+					"\r\n",
+					"\n",
+					"\r"
+				],
+				StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+			.Where(item => !string.IsNullOrWhiteSpace(item))
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.ToList();
+	}
+
+	private void ReadOAuthQueryParameters()
+	{
+		var uri = _navigationManager.ToAbsoluteUri(_navigationManager.Uri);
+		var query = Microsoft.AspNetCore.WebUtilities
+			.QueryHelpers
+			.ParseQuery(uri.Query);
+
+		if (query.TryGetValue("oauthError", out var oauthError)
+			&& !string.IsNullOrWhiteSpace(oauthError.ToString()))
+		{
+			_errorMessage = $"Авторизация Яндекс OAuth не завершена. {oauthError}";
+		}
+
+		if (query.TryGetValue("oauthSuccess", out var oauthSuccess)
+			&& bool.TryParse(oauthSuccess.ToString(), out var success)
+			&& success)
+		{
+			_successMessage = "Авторизация Яндекс OAuth завершена.";
+		}
+	}
+
+	private void ToggleManualToken()
+	{
+		_showManualToken = !_showManualToken;
+	}
+
+	private void GoToHome()
+	{
+		_navigationManager.NavigateTo("/");
+	}
+
+	private sealed class SettingsFormModel :
+		IValidatableObject
+	{
+		[Required(ErrorMessage = "Укажите ID организации Яндекс 360.")]
+		public string OrganizationId { get; set; } = string.Empty;
+
+		public string OAuthToken { get; set; } = string.Empty;
+
+		[Range(0.1, 24.0, ErrorMessage = "Длительность рабочего дня должна находиться "
+			+ "в диапазоне от 0,1 до 24 часов.")]
+		public decimal WorkdayDurationHours { get; set; } = 8.0m;
+
+		public string ValidationExclusionsText { get; set; } = "(овертайм)";
+
+		public bool OpenBrowserOnStart { get; set; } = true;
+
+		public BrowserPreference Browser { get; set; } = BrowserPreference.SystemDefault;
+
+		public string? CustomBrowserPath { get; set; }
+
+		public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+		{
+			if (Browser == BrowserPreference.Custom
+				&& string.IsNullOrWhiteSpace(CustomBrowserPath))
+			{
+				yield return new ValidationResult("Укажите путь к пользовательскому браузеру.",
+				[
+					nameof(CustomBrowserPath)
+				]);
+			}
+		}
+	}
+}

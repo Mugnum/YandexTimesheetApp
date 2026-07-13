@@ -1,0 +1,118 @@
+﻿@using System.Globalization
+@implements IAsyncDisposable
+@inherits InputBase<DateOnly>
+@inject IJSRuntime JavaScriptRuntime
+
+<div class="localized-date-input">
+	<input @ref="_inputElement"
+		   id="@Id"
+		   type="text"
+		   class="@CssClass"
+		   placeholder="@DisplayDateFormat"
+		   autocomplete="off"
+		   inputmode="numeric"
+		   @attributes="AdditionalAttributes" />
+</div>
+
+@code {
+	private const string DotNetDateFormat = "dd.MM.yyyy";
+	private const string DisplayDateFormat = "дд.мм.гггг";
+
+	private ElementReference _inputElement;
+	private DotNetObjectReference<LocalizedDateInput>? _objectReference;
+	private bool _isInitialized;
+	private DateOnly _previousValue;
+
+	[Parameter]
+	public string? Id { get; set; }
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (firstRender)
+		{
+			_objectReference = DotNetObjectReference.Create(this);
+
+			await JavaScriptRuntime.InvokeVoidAsync(
+				"yandexTimesheetDatePicker.initialize",
+				_inputElement,
+				FormatValue(CurrentValue),
+				CultureInfo.CurrentCulture.Name,
+				_objectReference);
+
+			_previousValue = CurrentValue;
+			_isInitialized = true;
+
+			return;
+		}
+
+		if (_isInitialized && CurrentValue != _previousValue)
+		{
+			await JavaScriptRuntime.InvokeVoidAsync(
+				"yandexTimesheetDatePicker.setValue",
+				_inputElement,
+				FormatValue(CurrentValue));
+
+			_previousValue = CurrentValue;
+		}
+	}
+
+	[JSInvokable]
+	public void HandleDateChanged(string? value)
+	{
+		CurrentValueAsString = value;
+		_previousValue = CurrentValue;
+	}
+
+	protected override string FormatValueAsString(DateOnly value)
+	{
+		return FormatValue(value);
+	}
+
+	protected override bool TryParseValueFromString(
+		string? value,
+		out DateOnly result,
+		out string validationErrorMessage)
+	{
+		if (DateOnly.TryParseExact(
+			value,
+			DotNetDateFormat,
+			CultureInfo.CurrentCulture,
+			DateTimeStyles.None,
+			out result))
+		{
+			validationErrorMessage = string.Empty;
+
+			return true;
+		}
+
+		validationErrorMessage =
+			$"Введите дату в формате {DotNetDateFormat}.";
+
+		return false;
+	}
+
+	public async ValueTask DisposeAsync()
+	{
+		if (_isInitialized)
+		{
+			try
+			{
+				await JavaScriptRuntime.InvokeVoidAsync(
+					"yandexTimesheetDatePicker.dispose",
+					_inputElement);
+			}
+			catch (JSDisconnectedException)
+			{
+			}
+		}
+
+		_objectReference?.Dispose();
+	}
+
+	private static string FormatValue(DateOnly value)
+	{
+		return value.ToString(
+			DotNetDateFormat,
+			CultureInfo.CurrentCulture);
+	}
+}

@@ -1,0 +1,124 @@
+.application-shell {
+    min-height: 100vh;
+    background: #f1f5f9;
+}
+
+.application-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 2rem;
+    min-height: 4rem;
+    padding: 0 1.5rem;
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    color: #0f172a;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.brand-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    background: #2563eb;
+    border-radius: 0.45rem;
+    color: #ffffff;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+}
+
+.main-navigation {
+    display: flex;
+    align-items: stretch;
+    align-self: stretch;
+    gap: 0.25rem;
+}
+
+    .main-navigation ::deep a {
+        display: flex;
+        align-items: center;
+        padding: 0 0.85rem;
+        border-bottom: 2px solid transparent;
+        color: #64748b;
+        font-size: 0.92rem;
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+        .main-navigation ::deep a:hover {
+            background: #f8fafc;
+            color: #0f172a;
+        }
+
+        .main-navigation ::deep a.active {
+            border-bottom-color: #2563eb;
+            color: #1d4ed8;
+        }
+
+.application-content {
+    width: min(100% - 2rem, 90rem);
+    margin: 0 auto;
+    padding: 1.5rem 0 3rem;
+}
+
+#blazor-error-ui {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 1000;
+    display: none;
+    padding: 0.8rem 1rem;
+    background: #7f1d1d;
+    border-radius: 0.4rem;
+    box-shadow: 0 0.4rem 1rem rgb(0 0 0 / 20%);
+    color: #ffffff;
+}
+
+    #blazor-error-ui .reload {
+        margin-left: 0.5rem;
+        color: #ffffff;
+        font-weight: 700;
+    }
+
+    #blazor-error-ui .dismiss {
+        margin-left: 0.75rem;
+        cursor: pointer;
+    }
+
+@media (max-width: 700px) {
+    .application-header {
+        grid-template-columns: 1fr auto;
+        gap: 0.75rem;
+        padding: 0 1rem;
+    }
+
+    .brand-text {
+        display: none;
+    }
+
+    .main-navigation {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        order: 3;
+        min-height: 2.7rem;
+    }
+
+    .application-content {
+        width: min(100% - 1rem, 90rem);
+        padding-top: 1rem;
+    }
+}

@@ -1,0 +1,90 @@
+﻿@rendermode InteractiveServer
+
+@inject ISecretStore SecretStore
+@inject NavigationManager NavigationManager
+
+<div class="header-actions">
+	@if (_isLoading)
+	{
+		<span class="authentication-status">
+			Проверка авторизации...
+		</span>
+	}
+	else if (!_oauthIsConfigured)
+	{
+		<a class="settings-button"
+		   href="/settings"
+		   title="Настроить Яндекс OAuth">
+			Настроить OAuth
+		</a>
+	}
+	else if (_isAuthenticated)
+	{
+		<span class="authentication-status authentication-status-success">
+			Авторизован
+		</span>
+
+		<button type="button"
+				class="sign-out-button"
+				title="Удалить сохранённые OAuth-токены"
+				disabled="@_isSigningOut"
+				@onclick="SignOutAsync">
+			@(_isSigningOut
+				? "Выход..."
+				: "Выйти")
+		</button>
+	}
+	else
+	{
+		<a class="sign-in-button"
+		   href="/oauth/login"
+		   data-enhance-nav="false">
+			Войти через Яндекс
+		</a>
+	}
+</div>
+
+@code {
+	private bool _isLoading = true;
+	private bool _oauthIsConfigured;
+	private bool _isAuthenticated;
+	private bool _isSigningOut;
+
+	protected override async Task OnInitializedAsync()
+	{
+		try
+		{
+			_oauthIsConfigured = !string.IsNullOrWhiteSpace(ApplicationSettings.YandexOAuthClientId)
+				&& Uri.TryCreate(ApplicationSettings.YandexOAuthRedirectUri, UriKind.Absolute, out _);
+
+			var accessToken = await SecretStore.GetAsync(TrackerSecretNames.OAuthAccessToken);
+			_isAuthenticated = !string.IsNullOrWhiteSpace(accessToken);
+		}
+		catch
+		{
+			_oauthIsConfigured = false;
+			_isAuthenticated = false;
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
+
+	private async Task SignOutAsync()
+	{
+		_isSigningOut = true;
+
+		try
+		{
+			_isAuthenticated = false;
+			await SecretStore.RemoveAsync(TrackerSecretNames.OAuthAccessToken);
+			await SecretStore.RemoveAsync(TrackerSecretNames.OAuthRefreshToken);
+			NavigationManager.NavigateTo("/settings", forceLoad: true);
+		}
+		finally
+		{
+			_isSigningOut = false;
+		}
+	}
+}

@@ -1,0 +1,40 @@
+﻿@inherits LayoutComponentBase
+
+<div class="application-shell">
+	<header class="application-header">
+		<a class="brand" href="/">
+			<span class="brand-mark">YT</span>
+
+			<span class="brand-text">
+				Yandex Timesheet
+			</span>
+		</a>
+
+		<nav class="main-navigation">
+			<NavLink href="/"
+					 Match="NavLinkMatch.All">
+				Списания
+			</NavLink>
+
+			<NavLink href="/settings">
+				Настройки
+			</NavLink>
+		</nav>
+
+		<HeaderActions />
+	</header>
+
+	<main class="application-content">
+		@Body
+	</main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+	Произошла необработанная ошибка.
+
+	<a href="." class="reload">
+		Перезагрузить
+	</a>
+
+	<span class="dismiss">🗙</span>
+</div>

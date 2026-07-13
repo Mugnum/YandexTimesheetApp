@@ -1,0 +1,1114 @@
+﻿@page "/"
+@using Mugnum.YandexTimesheetApp.Infrastructure.YandexTracker.Exceptions
+@rendermode InteractiveServer
+
+@inject CurrentUserWorklogService _worklogService
+@inject ApplicationSettingsService _settingsService
+
+<PageTitle>Списания времени</PageTitle>
+
+<div class="timesheet-page">
+	<section class="page-heading">
+		<div>
+			<h1>Списания времени</h1>
+
+			<p>
+				Просмотр списаний текущего пользователя
+				за выбранный диапазон.
+			</p>
+		</div>
+
+		@if (_snapshot is not null)
+		{
+			<div class="user-summary">
+				<strong>@_snapshot.User.DisplayName</strong>
+				<span>@_snapshot.User.Login</span>
+
+				@if (!string.IsNullOrWhiteSpace(
+					_snapshot.User.Email))
+				{
+					<span>@_snapshot.User.Email</span>
+				}
+			</div>
+		}
+	</section>
+
+	<EditForm Model="_filter"
+			  OnValidSubmit="ApplyFilterAndSort"
+			  FormName="worklog-filter"
+			  class="filter-panel">
+
+		<DataAnnotationsValidator />
+
+		<div class="filter-columns">
+			<div class="filter-column date-range-column">
+				<span class="filter-group-label">
+					Период
+				</span>
+
+				<div class="date-range-fields">
+					<div class="filter-field">
+						<label for="date-from">
+							Дата с
+						</label>
+
+						<LocalizedDateInput id="date-from"
+											class="filter-input"
+											@bind-Value="_filter.From" />
+					</div>
+
+					<div class="filter-field">
+						<label for="date-to">
+							Дата по
+						</label>
+
+						<LocalizedDateInput id="date-to"
+											class="filter-input"
+											@bind-Value="_filter.To" />
+					</div>
+				</div>
+			</div>
+
+			<div class="filter-column page-size-column">
+				<div class="filter-field">
+					<label for="page-size">
+						Строк на странице
+					</label>
+
+					<InputSelect TValue="int"
+								 id="page-size"
+								 class="filter-input"
+								 @bind-Value="_filter.PageSize">
+						@foreach (var option in PageSizeOptions)
+						{
+							<option value="@option.Value">
+								@option.Label
+							</option>
+						}
+					</InputSelect>
+				</div>
+			</div>
+
+			<div class="filter-column violations-column">
+				<div class="filter-field checkbox-filter">
+					<label>
+						<InputCheckbox @bind-Value="_filter.OnlyViolations" />
+
+						Только дни с нарушениями
+					</label>
+				</div>
+			</div>
+		</div>
+
+		<div class="filter-actions">
+			<div class="primary-actions">
+				<button type="submit"
+						class="button button-primary"
+						disabled="@_isLoading">
+					Применить
+				</button>
+
+				<button type="button"
+						class="button button-secondary"
+						disabled="@_isLoading"
+						@onclick="SynchronizeAsync">
+					@(_isLoading
+						? "Синхронизация..."
+						: "Синхронизировать")
+				</button>
+			</div>
+
+			<div class="rare-actions">
+				<details class="actions-menu">
+					<summary class="button button-secondary">
+						Действия
+					</summary>
+
+					<div class="actions-menu-content">
+						<button type="button"
+								@onclick="ShowAllDates">
+							Все даты
+						</button>
+					</div>
+				</details>
+			</div>
+		</div>
+
+		<div class="filter-validation">
+			<ValidationMessage For="@(() => _filter.From)" />
+			<ValidationMessage For="@(() => _filter.To)" />
+		</div>
+	</EditForm>
+
+	@if (!string.IsNullOrWhiteSpace(_errorMessage))
+	{
+		<section class="message-panel error-panel">
+			<strong>@_errorHeading</strong>
+
+			<p>@_errorMessage</p>
+
+			@if (_requiresAuthentication)
+			{
+				<div class="authentication-actions">
+					<a class="button button-primary"
+					   href="/oauth/login"
+		   data-enhance-nav="false">
+						Авторизоваться в Яндексе
+					</a>
+
+					<a class="button button-secondary"
+					   href="/settings">
+						Настройки подключения
+					</a>
+				</div>
+			}
+			else
+			{
+				<div class="authentication-actions">
+					<a class="button button-secondary"
+					   href="/settings">
+						Открыть настройки
+					</a>
+				</div>
+			}
+		</section>
+	}
+	else if (_isLoading && _snapshot is null)
+	{
+		<section class="message-panel">
+			Загрузка данных из Яндекс Трекера...
+		</section>
+	}
+	else if (_snapshot is not null)
+	{
+		<section class="table-card">
+			<div class="table-summary">
+				<div class="summary-item">
+					<span>Записей в диапазоне</span>
+
+					<strong>
+						@_displayedWorklogs.Count
+					</strong>
+				</div>
+
+				<div class="summary-item">
+					<span>Общее время</span>
+
+					<strong>
+						@FormatDuration(_displayedDuration)
+					</strong>
+				</div>
+
+				<div class="summary-item">
+					<span>Дней с нарушениями</span>
+
+					<strong>
+						@_displayedViolationDatesCount
+					</strong>
+				</div>
+
+				<div class="summary-item">
+					<span>Рабочий день</span>
+
+					<strong>
+						@FormatHours(
+							_workdayDurationHours)
+					</strong>
+				</div>
+
+				<div class="summary-item summary-loaded">
+					<span>Последняя синхронизация</span>
+
+					<strong>
+						@FormatLoadedAt(
+							_snapshot.LoadedAtUtc)
+					</strong>
+				</div>
+			</div>
+
+			@if (_displayedWorklogs.Count == 0)
+			{
+				<div class="empty-state">
+					За выбранный период списаний не найдено.
+				</div>
+			}
+			else
+			{
+				<div class="table-wrapper">
+					<table class="worklog-table">
+						<thead>
+							<tr>
+								<th class="date-column">
+									<button type="button"
+											class="sort-button"
+											@onclick="@(() =>
+																						SetSort(
+																							WorklogSortColumn.Date))">
+										Дата и время
+
+										@SortIndicator(
+											WorklogSortColumn.Date)
+									</button>
+								</th>
+
+								<th class="issue-column">
+									<button type="button"
+											class="sort-button"
+											@onclick="@(() =>
+																						SetSort(
+																							WorklogSortColumn.Issue))">
+										Задача
+
+										@SortIndicator(
+											WorklogSortColumn.Issue)
+									</button>
+								</th>
+
+								<th class="comment-column">
+									<button type="button"
+											class="sort-button"
+											@onclick="@(() =>
+																						SetSort(
+																							WorklogSortColumn.Comment))">
+										Комментарий
+
+										@SortIndicator(
+											WorklogSortColumn.Comment)
+									</button>
+								</th>
+
+								<th class="duration-column">
+									<button type="button"
+											class="sort-button"
+											@onclick="@(() =>
+																						SetSort(
+																							WorklogSortColumn.Duration))">
+										Длительность
+
+										@SortIndicator(
+											WorklogSortColumn.Duration)
+									</button>
+								</th>
+							</tr>
+						</thead>
+
+						<tbody>
+							@{
+								DateOnly? renderedDate = null;
+							}
+
+							@foreach (var worklog
+								in _currentPageWorklogs)
+							{
+								var localStart =
+									ConvertToLocalTime(
+										worklog.Start);
+
+								var localDate =
+									DateOnly.FromDateTime(
+										localStart.DateTime);
+
+								if (ShouldRenderDayHeader(
+									renderedDate,
+									localDate))
+								{
+									renderedDate = localDate;
+
+									<tr class="day-group-row">
+										<td colspan="4">
+											<div class="day-group-heading">
+												<span>
+													@FormatDayHeading(
+														localDate)
+												</span>
+
+												<span>
+													@FormatDayTotal(
+														localDate)
+												</span>
+
+												@if (_violationDates.Contains(
+													localDate))
+												{
+													<span class="violation-label">
+														Превышение
+													</span>
+												}
+											</div>
+										</td>
+									</tr>
+								}
+
+								var validationExcluded =
+									IsValidationExcluded(
+										worklog);
+
+								var validationViolation =
+									_violationDates.Contains(
+										localDate)
+									&& !validationExcluded;
+
+								<tr>
+									<td class="date-column">
+										<strong>
+											@localStart.ToString(
+												"dd.MM.yyyy",
+												CultureInfo.CurrentCulture)
+										</strong>
+
+										<span>
+											@localStart.ToString(
+												"HH:mm",
+												CultureInfo.CurrentCulture)
+										</span>
+									</td>
+
+									<td class="issue-column">
+										<strong>
+											@worklog.IssueKey
+										</strong>
+
+										<span>
+											@worklog.IssueTitle
+										</span>
+									</td>
+
+									<td class="comment-column">
+										@if (string.IsNullOrWhiteSpace(
+											worklog.Comment))
+										{
+											<span class="empty-comment">
+												Без комментария
+											</span>
+										}
+										else
+										{
+											@worklog.Comment
+										}
+
+										@if (validationExcluded)
+										{
+											<span class="exclusion-label"
+												  title="Запись не участвует в проверке длительности рабочего дня">
+												Исключено из проверки
+											</span>
+										}
+									</td>
+
+									<td class="duration-column">
+										<span class="@GetDurationCssClass(
+																						  validationViolation,
+																						  validationExcluded)">
+											@FormatDuration(
+												worklog.Duration)
+										</span>
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+
+				@if (!_isPaginationDisabled)
+				{
+					<div class="pagination">
+						<div class="pagination-info">
+							Показаны записи
+
+							<strong>
+								@_pageStartIndex–@_pageEndIndex
+							</strong>
+
+							из
+
+							<strong>
+								@_displayedWorklogs.Count
+							</strong>
+						</div>
+
+						<div class="pagination-controls">
+							<button type="button"
+									class="pagination-button"
+									title="Первая страница"
+									disabled="@(_currentPage <= 1)"
+									@onclick="@(() => GoToPage(1))">
+								«
+							</button>
+
+							<button type="button"
+									class="pagination-button"
+									title="Предыдущая страница"
+									disabled="@(_currentPage <= 1)"
+									@onclick="@(() =>
+																		GoToPage(
+																			_currentPage - 1))">
+								‹
+							</button>
+
+							<span class="page-number">
+								Страница
+
+								<strong>@_currentPage</strong>
+
+								из
+
+								<strong>@_totalPages</strong>
+							</span>
+
+							<button type="button"
+									class="pagination-button"
+									title="Следующая страница"
+									disabled="@(_currentPage >= _totalPages)"
+									@onclick="@(() =>
+																		GoToPage(
+																			_currentPage + 1))">
+								›
+							</button>
+
+							<button type="button"
+									class="pagination-button"
+									title="Последняя страница"
+									disabled="@(_currentPage >= _totalPages)"
+									@onclick="@(() =>
+																		GoToPage(_totalPages))">
+								»
+							</button>
+						</div>
+					</div>
+				}
+				else
+				{
+					<div class="pagination pagination-disabled">
+						Показаны все
+
+						<strong>
+							@_displayedWorklogs.Count
+						</strong>
+
+						записей.
+					</div>
+				}
+			}
+		</section>
+	}
+</div>
+
+@code {
+	private const int AllRowsPageSize = int.MaxValue;
+
+	private static readonly PageSizeOption[] PageSizeOptions =
+	[
+		new(10, "10"),
+		new(20, "20"),
+		new(50, "50"),
+		new(100, "100"),
+		new(AllRowsPageSize, "Все")
+	];
+
+	private readonly WorklogFilterModel _filter = new();
+
+	private CurrentUserWorklogSnapshot? _snapshot;
+
+	private IReadOnlyList<WorklogEntry> _displayedWorklogs = [];
+
+	private HashSet<DateOnly> _violationDates = [];
+
+	private Dictionary<DateOnly, TimeSpan> _validationTotals = new();
+
+	private List<string> _validationExclusions =
+	[
+		"(овертайм)"
+	];
+
+	private decimal _workdayDurationHours = 8.0m;
+	private bool _isLoading;
+	private bool _requiresAuthentication;
+	private string? _errorMessage;
+	private int _currentPage = 1;
+
+	private WorklogSortColumn _sortColumn = WorklogSortColumn.Date;
+	private SortDirection _sortDirection = SortDirection.Ascending;
+	private string _errorHeading => _requiresAuthentication
+		? "Требуется авторизация."
+		: "Не удалось загрузить данные.";
+
+	private bool _isPaginationDisabled => _filter.PageSize == AllRowsPageSize;
+
+	private int _displayedViolationDatesCount => _displayedWorklogs
+		.Select(worklog => GetLocalDate(worklog.Start))
+		.Where(date => _violationDates.Contains(date))
+		.Distinct()
+		.Count();
+
+	private int _totalPages
+	{
+		get
+		{
+			if (_displayedWorklogs.Count == 0 || _filter.PageSize == 0)
+			{
+				return 0;
+			}
+			if (_isPaginationDisabled)
+			{
+				return 1;
+			}
+
+			return (int)Math.Ceiling(_displayedWorklogs.Count / (double)_filter.PageSize);
+		}
+	}
+
+	private int _pageStartIndex
+	{
+		get
+		{
+			if (_displayedWorklogs.Count == 0)
+			{
+				return 0;
+			}
+			if (_isPaginationDisabled)
+			{
+				return 1;
+			}
+
+			return ((_currentPage - 1) * _filter.PageSize) + 1;
+		}
+	}
+
+	private int _pageEndIndex
+	{
+		get
+		{
+			if (_isPaginationDisabled)
+			{
+				return _displayedWorklogs.Count;
+			}
+
+			return Math.Min(
+				_currentPage * _filter.PageSize,
+				_displayedWorklogs.Count);
+		}
+	}
+
+	private IEnumerable<WorklogEntry> _currentPageWorklogs
+	{
+		get
+		{
+			if (_isPaginationDisabled)
+			{
+				return _displayedWorklogs;
+			}
+
+			return _displayedWorklogs
+				.Skip((_currentPage - 1) * _filter.PageSize)
+				.Take(_filter.PageSize);
+		}
+	}
+
+	private TimeSpan _displayedDuration => TimeSpan.FromTicks(
+		_displayedWorklogs.Sum(worklog => worklog.Duration.Ticks));
+
+	protected override async Task OnInitializedAsync()
+	{
+		var today = DateOnly.FromDateTime(DateTime.Today);
+		var startOfWeek = GetStartOfWeek(today);
+
+		_filter.From = startOfWeek;
+		_filter.To = startOfWeek.AddDays(6);
+
+		await LoadAsync(forceRefresh: false);
+	}
+
+	private async Task SynchronizeAsync()
+	{
+		await LoadAsync(forceRefresh: true);
+	}
+
+	private async Task LoadAsync(bool forceRefresh)
+	{
+		_isLoading = true;
+		_errorMessage = null;
+		_requiresAuthentication = false;
+
+		try
+		{
+			await LoadApplicationSettingsAsync();
+
+			_snapshot =
+				await _worklogService.GetSnapshotAsync(
+					forceRefresh);
+
+			CalculateValidationState();
+			ApplyFilterAndSort();
+		}
+		catch (TrackerAuthenticationRequiredException exception)
+		{
+			_requiresAuthentication = true;
+			_errorMessage = exception.Message;
+		}
+		catch (TrackerApiException exception)
+			when (exception.StatusCode
+				== HttpStatusCode.Unauthorized)
+		{
+			_requiresAuthentication = true;
+
+			_errorMessage =
+				"Сохранённый OAuth-токен недействителен, " +
+				"истёк или был отозван. " +
+				"Авторизуйтесь повторно.";
+		}
+		catch (TrackerApiException exception)
+			when (exception.StatusCode
+				== HttpStatusCode.Forbidden)
+		{
+			_errorMessage =
+				"OAuth-токен принят, но у пользователя " +
+				"недостаточно прав для работы с Яндекс Трекером.";
+		}
+		catch (InvalidOperationException exception)
+		{
+			_errorMessage = exception.Message;
+		}
+		catch (Exception exception)
+		{
+			_errorMessage = exception.Message;
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
+
+	private async Task LoadApplicationSettingsAsync()
+	{
+		var settings =
+			await _settingsService.GetAsync();
+
+		_workdayDurationHours =
+			settings.WorkdayDurationHours;
+
+		_validationExclusions =
+			settings.ValidationExclusions
+				.Where(value =>
+					!string.IsNullOrWhiteSpace(value))
+				.ToList();
+	}
+
+	private void CalculateValidationState()
+	{
+		if (_snapshot is null)
+		{
+			_validationTotals = new();
+			_violationDates = [];
+
+			return;
+		}
+
+		_validationTotals = _snapshot.Worklogs
+			.Where(worklog =>
+				!IsValidationExcluded(worklog))
+			.GroupBy(worklog =>
+				GetLocalDate(worklog.Start))
+			.ToDictionary(
+				group => group.Key,
+				group => TimeSpan.FromTicks(
+					group.Sum(worklog =>
+						worklog.Duration.Ticks)));
+
+		var maximumDuration =
+			TimeSpan.FromHours(
+				(double)_workdayDurationHours);
+
+		_violationDates = _validationTotals
+			.Where(pair =>
+				pair.Value > maximumDuration)
+			.Select(pair => pair.Key)
+			.ToHashSet();
+	}
+
+	private void ApplyFilterAndSort()
+	{
+		if (_snapshot is null)
+		{
+			return;
+		}
+
+		IEnumerable<WorklogEntry> query =
+			_snapshot.Worklogs.Where(worklog =>
+			{
+				var localDate =
+					GetLocalDate(worklog.Start);
+
+				if (localDate < _filter.From
+					|| localDate > _filter.To)
+				{
+					return false;
+				}
+
+				if (_filter.OnlyViolations
+					&& !_violationDates.Contains(
+						localDate))
+				{
+					return false;
+				}
+
+				return true;
+			});
+
+		query = ApplySorting(query);
+
+		_displayedWorklogs = query.ToArray();
+		_currentPage = 1;
+	}
+
+	private IEnumerable<WorklogEntry> ApplySorting(
+		IEnumerable<WorklogEntry> source)
+	{
+		var ascending =
+			_sortDirection == SortDirection.Ascending;
+
+		return _sortColumn switch
+		{
+			WorklogSortColumn.Date =>
+				ascending
+					? source
+						.OrderBy(worklog =>
+							worklog.Start)
+						.ThenBy(worklog =>
+							worklog.Id)
+					: source
+						.OrderByDescending(worklog =>
+							worklog.Start)
+						.ThenByDescending(worklog =>
+							worklog.Id),
+
+			WorklogSortColumn.Issue =>
+				ascending
+					? source
+						.OrderBy(
+							worklog =>
+								worklog.IssueKey,
+							StringComparer
+								.CurrentCultureIgnoreCase)
+						.ThenBy(worklog =>
+							worklog.Start)
+					: source
+						.OrderByDescending(
+							worklog =>
+								worklog.IssueKey,
+							StringComparer
+								.CurrentCultureIgnoreCase)
+						.ThenByDescending(worklog =>
+							worklog.Start),
+
+			WorklogSortColumn.Comment =>
+				ascending
+					? source
+						.OrderBy(
+							worklog =>
+								worklog.Comment
+								?? string.Empty,
+							StringComparer
+								.CurrentCultureIgnoreCase)
+						.ThenBy(worklog =>
+							worklog.Start)
+					: source
+						.OrderByDescending(
+							worklog =>
+								worklog.Comment
+								?? string.Empty,
+							StringComparer
+								.CurrentCultureIgnoreCase)
+						.ThenByDescending(worklog =>
+							worklog.Start),
+
+			WorklogSortColumn.Duration =>
+				ascending
+					? source
+						.OrderBy(worklog =>
+							worklog.Duration)
+						.ThenBy(worklog =>
+							worklog.Start)
+					: source
+						.OrderByDescending(worklog =>
+							worklog.Duration)
+						.ThenByDescending(worklog =>
+							worklog.Start),
+
+			_ => source
+		};
+	}
+
+	private void SetSort(WorklogSortColumn column)
+	{
+		if (_sortColumn == column)
+		{
+			_sortDirection =
+				_sortDirection == SortDirection.Ascending
+					? SortDirection.Descending
+					: SortDirection.Ascending;
+		}
+		else
+		{
+			_sortColumn = column;
+			_sortDirection = SortDirection.Ascending;
+		}
+
+		ApplyFilterAndSort();
+	}
+
+	private MarkupString SortIndicator(
+		WorklogSortColumn column)
+	{
+		if (_sortColumn != column)
+		{
+			return new MarkupString(
+				"<span class=\"sort-indicator " +
+				"sort-inactive\">↕</span>");
+		}
+
+		var indicator =
+			_sortDirection == SortDirection.Ascending
+				? "↑"
+				: "↓";
+
+		return new MarkupString(
+			$"<span class=\"sort-indicator\">" +
+			$"{indicator}</span>");
+	}
+
+	private void ShowAllDates()
+	{
+		if (_snapshot is null
+			|| _snapshot.Worklogs.Count == 0)
+		{
+			return;
+		}
+
+		var dates = _snapshot.Worklogs
+			.Select(worklog =>
+				GetLocalDate(worklog.Start))
+			.ToArray();
+
+		_filter.From = dates.Min();
+		_filter.To = dates.Max();
+		_filter.OnlyViolations = false;
+
+		ApplyFilterAndSort();
+	}
+
+	private bool IsValidationExcluded(
+		WorklogEntry worklog)
+	{
+		if (_validationExclusions.Count == 0)
+		{
+			return false;
+		}
+
+		var searchableText = string.Join(
+			" ",
+			worklog.IssueKey,
+			worklog.IssueTitle,
+			worklog.Comment ?? string.Empty);
+
+		return _validationExclusions.Any(exclusion =>
+			searchableText.Contains(
+				exclusion,
+				StringComparison
+					.CurrentCultureIgnoreCase));
+	}
+
+	private static string GetDurationCssClass(
+		bool violation,
+		bool validationExcluded)
+	{
+		if (validationExcluded)
+		{
+			return
+				"duration-badge duration-excluded";
+		}
+
+		if (violation)
+		{
+			return
+				"duration-badge duration-violation";
+		}
+
+		return "duration-badge";
+	}
+
+	private bool ShouldRenderDayHeader(
+		DateOnly? renderedDate,
+		DateOnly currentDate)
+	{
+		if (_sortColumn != WorklogSortColumn.Date)
+		{
+			return false;
+		}
+
+		return renderedDate != currentDate;
+	}
+
+	private static string FormatDayHeading(
+		DateOnly date)
+	{
+		var culture =
+			CultureInfo.CurrentCulture;
+
+		var dateTime = date.ToDateTime(
+			TimeOnly.MinValue);
+
+		var value = dateTime.ToString(
+			"dddd, d MMMM yyyy",
+			culture);
+
+		if (string.IsNullOrWhiteSpace(value))
+		{
+			return value;
+		}
+
+		return char.ToUpper(
+			value[0],
+			culture)
+			+ value[1..];
+	}
+
+	private string FormatDayTotal(DateOnly date)
+	{
+		if (!_validationTotals.TryGetValue(
+			date,
+			out var duration))
+		{
+			return "Проверяемое время: 0 ч";
+		}
+
+		return
+			$"Проверяемое время: " +
+			$"{FormatDuration(duration)}";
+	}
+
+	private void GoToPage(int page)
+	{
+		if (_totalPages == 0)
+		{
+			_currentPage = 1;
+
+			return;
+		}
+
+		_currentPage = Math.Clamp(
+			page,
+			1,
+			_totalPages);
+	}
+
+	private static DateOnly GetStartOfWeek(DateOnly date)
+	{
+		// Начало с понедельника.
+		var difference = (7 + (date.DayOfWeek - DayOfWeek.Monday)) % 7;
+		return date.AddDays(-difference);
+	}
+
+	private static DateOnly GetLocalDate(
+		DateTimeOffset value)
+	{
+		var localValue =
+			ConvertToLocalTime(value);
+
+		return DateOnly.FromDateTime(
+			localValue.DateTime);
+	}
+
+	private static DateTimeOffset ConvertToLocalTime(
+		DateTimeOffset value)
+	{
+		return TimeZoneInfo.ConvertTime(
+			value,
+			TimeZoneInfo.Local);
+	}
+
+	private static string FormatDuration(
+		TimeSpan duration)
+	{
+		var totalMinutes =
+			(long)Math.Round(
+				duration.TotalMinutes);
+
+		var hours = totalMinutes / 60;
+		var minutes = totalMinutes % 60;
+
+		if (hours == 0)
+		{
+			return $"{minutes} мин";
+		}
+
+		if (minutes == 0)
+		{
+			return $"{hours} ч";
+		}
+
+		return $"{hours} ч {minutes} мин";
+	}
+
+	private static string FormatHours(decimal hours)
+	{
+		return
+			$"{hours.ToString(
+				"0.##",
+				CultureInfo.CurrentCulture)} ч";
+	}
+
+	private static string FormatLoadedAt(
+		DateTimeOffset loadedAtUtc)
+	{
+		var localValue =
+			ConvertToLocalTime(loadedAtUtc);
+
+		return localValue.ToString(
+			"dd.MM.yyyy HH:mm",
+			CultureInfo.CurrentCulture);
+	}
+
+	private sealed record PageSizeOption(
+		int Value,
+		string Label);
+
+	private sealed class WorklogFilterModel :
+		IValidatableObject
+	{
+		public DateOnly From { get; set; }
+
+		public DateOnly To { get; set; }
+
+		public int PageSize { get; set; } = 20;
+
+		public bool OnlyViolations { get; set; }
+
+		public IEnumerable<ValidationResult> Validate(
+			ValidationContext validationContext)
+		{
+			if (To < From)
+			{
+				yield return new ValidationResult(
+					"Конечная дата не может быть меньше начальной.",
+					[
+						nameof(From),
+						nameof(To)
+					]);
+			}
+		}
+	}
+
+	private enum WorklogSortColumn
+	{
+		Date,
+		Issue,
+		Comment,
+		Duration
+	}
+
+	private enum SortDirection
+	{
+		Ascending,
+		Descending
+	}
+}
