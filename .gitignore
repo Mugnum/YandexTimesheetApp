@@ -137,3 +137,6 @@ dist/
 
 # LibMan cache and generated compressed copies
 .librarymanager/
+
+# Build scripts
+artifacts/

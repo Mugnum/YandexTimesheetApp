@@ -4,5 +4,8 @@
     <File Path="LICENSE.txt" />
     <File Path="README.md" />
   </Folder>
+  <Folder Name="/Solution Items/build/">
+    <File Path="build/Publish-Releases.ps1" />
+  </Folder>
   <Project Path="YandexTimesheetApp/YandexTimesheetApp.csproj" />
 </Solution>
